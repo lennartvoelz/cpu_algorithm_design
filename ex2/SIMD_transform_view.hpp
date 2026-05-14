@@ -237,32 +237,28 @@ public:
         constexpr auto simd_width = batch::size;
         Index Nout = min(N, default_Nout);
         auto V = std::views::iota(0, N) | std::views::transform([](int x) {
-           return static_cast<Real>(x); 
+           return static_cast<Real>(x);
         });
         std::vector<Real> W(256);
         std::iota(W.begin(), W.end(), Real{2});
-        auto mod256 = [](int low, int high) {
-            return std::views::iota(low, high) | std::views::transform([](int x) {
-                return x % 256;
-            });
-        };
+
+        const batch a_vec(-1.0f);
+        const int simd_N = N - N % simd_width;
 
         for (auto _ : p_loop_state)
         {
-            for (int block{0}; block < N; block += simd_width) {
-                auto V_chunk = V | std::views::drop(block)
-                                 | std::views::take(simd_width)
-                                 | std::ranges::to<std::vector>();
+            for (int block{0}; block < simd_N; block += simd_width) {
+                std::array<Real, simd_width> v_buf;
+                std::ranges::copy(V | std::views::drop(block) | std::views::take(simd_width), v_buf.begin());
 
-                auto w_idx = mod256(block, block + simd_width);
-                // This always works because index wrap around
-                // is a multiple of the simd_width
-                batch w_vec = batch::load_unaligned(W.data() + *w_idx.begin());
-                batch v_vec = batch::load_unaligned(V_chunk.data());
-                batch a_vec(-1.0f);
+                const int w_offset = block % 256;
+                batch w_vec = batch::load_unaligned(W.data() + w_offset);
+                batch v_vec = batch::load_unaligned(v_buf.data());
                 w_vec = a_vec * v_vec + w_vec;
-                w_vec.store_unaligned(W.data() + *w_idx.begin());
+                w_vec.store_unaligned(W.data() + w_offset);
             }
+            for (int i = simd_N; i < N; ++i)
+                W[i % 256] = -1.0f * static_cast<Real>(i) + W[i % 256];
 
             p_loop_action();
         }
@@ -278,32 +274,28 @@ public:
         using aligned_vec = std::vector<Real, xsimd::aligned_allocator<Real, alignof(batch)>>;
         Index Nout = min(N, default_Nout);
         auto V = std::views::iota(0, N) | std::views::transform([](int x) {
-           return static_cast<Real>(x); 
+           return static_cast<Real>(x);
         });
         aligned_vec W(256);
         std::iota(W.begin(), W.end(), Real{2});
-        auto mod256 = [](int low, int high) {
-            return std::views::iota(low, high) | std::views::transform([](int x) {
-                return x % 256;
-            });
-        };
+
+        const batch a_vec(-1.0f);
+        const int simd_N = N - N % simd_width;
 
         for (auto _ : p_loop_state)
         {
-            for (int block{0}; block < N; block += simd_width) {
-                auto V_chunk = V | std::views::drop(block)
-                                 | std::views::take(simd_width)
-                                 | std::ranges::to<aligned_vec>();
+            for (int block{0}; block < simd_N; block += simd_width) {
+                alignas(alignof(batch)) std::array<Real, simd_width> v_buf;
+                std::ranges::copy(V | std::views::drop(block) | std::views::take(simd_width), v_buf.begin());
 
-                auto w_idx = mod256(block, block + simd_width);
-                // This always works because index wrap around
-                // is a multiple of the simd_width
-                batch w_vec = batch::load_aligned(W.data() + *w_idx.begin());
-                batch v_vec = batch::load_aligned(V_chunk.data());
-                batch a_vec(-1.0f);
+                const int w_offset = block % 256;
+                batch w_vec = batch::load_aligned(W.data() + w_offset);
+                batch v_vec = batch::load_aligned(v_buf.data());
                 w_vec = a_vec * v_vec + w_vec;
-                w_vec.store_aligned(W.data() + *w_idx.begin());
+                w_vec.store_aligned(W.data() + w_offset);
             }
+            for (int i = simd_N; i < N; ++i)
+                W[i % 256] = -1.0f * static_cast<Real>(i) + W[i % 256];
 
             p_loop_action();
         }
