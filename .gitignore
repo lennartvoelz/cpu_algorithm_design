@@ -17,3 +17,7 @@ build/
 *.so
 *.out
 *.exe
+
+*.png
+*.zip
+*.txt
