@@ -26,4 +26,4 @@ plt.tight_layout()
 
 
 # save the plot, you can also change this
-plt.savefig("ex02.png")
+plt.savefig("ex02_transform_view.png")
